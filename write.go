@@ -1,4 +1,17 @@
-// Copyright 2014 Tamás Gulácsi.
+// Copyright 2014 Tamás Gulácsi
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
 
 // Package sz implements "Snappy-framed" streaming Reader/Writer with Snappy.
 //
@@ -14,10 +27,12 @@ import (
 	"code.google.com/p/snappy-go/snappy"
 )
 
-const maxDataLength = 1<<24 - 1 - 4
+var streamFirstChunk = []byte{0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59}
+
+const maxUncomprLength = 65536
 
 // comprLen = 32 + srcLen + srcLen/6 => srcLen = (comprLen * 6 - 32*6) / 7
-const maxComprLength = (maxDataLength*6 - 32*6) / 7
+const maxComprLength = (maxUncomprLength*6 - 32*6) / 7
 
 // Writer implements a Snappy-framed compressing stream io.Writer.
 type Writer struct {
@@ -30,14 +45,14 @@ type Writer struct {
 //
 func NewWriter(w io.Writer) (*Writer, error) {
 	// Stream identifier 0xff + LE length + "sNaPpY" in ASCII.
-	_, err := w.Write([]byte{0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59})
+	_, err := w.Write(streamFirstChunk)
 	if err != nil {
 		return nil, err
 	}
 	return &Writer{
 		w:     w,
 		compr: make([]byte, 0, maxComprLength),
-		raw:   make([]byte, 0, maxDataLength),
+		raw:   make([]byte, 0, maxUncomprLength),
 	}, nil
 }
 
