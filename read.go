@@ -23,7 +23,15 @@ import (
 
 	"code.google.com/p/leveldb-go/leveldb/crc"
 	"code.google.com/p/snappy-go/snappy"
+	"gopkg.in/inconshreveable/log15.v2"
 )
+
+// Log is discarded by default. Use Log.SetHandler for other log sinks.
+var Log = log15.New()
+
+func init() {
+	Log.SetHandler(log15.DiscardHandler())
+}
 
 const maxChunkLength = 65536 + 4 + 4
 

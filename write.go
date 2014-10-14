@@ -12,7 +12,6 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-
 // Package sz implements "Snappy-framed" streaming Reader/Writer with Snappy.
 //
 // See https://code.google.com/p/snappy/source/browse/trunk/framing_format.txt
