@@ -19,6 +19,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"time"
 
 	"github.com/tgulacsi/sz"
 	"gopkg.in/inconshreveable/log15.v2"
@@ -29,81 +30,97 @@ var Log = log15.New()
 func main() {
 	Log.SetHandler(log15.StderrHandler)
 
+	flagVerbose := flag.Bool("v", false, "verbose logging")
 	flagDecompress := flag.Bool("d", false, "decompress input")
 	flagOut := flag.String("o", "", "output name (default is stdout)")
 	flag.Parse()
 
-	fn := flag.Arg(0)
+	if !*flagVerbose {
+		Log.SetHandler(log15.LvlFilterHandler(log15.LvlWarn, log15.StderrHandler))
+	}
+
+	var err error
+	err = do(flag.Arg(0), *flagOut, *flagDecompress)
+	if err != nil {
+		Log.Error("", "error", err)
+		os.Exit(1)
+	}
+}
+
+func do(inpFn, outFn string, decompress bool) error {
 	var inp io.Reader
-	if fn == "" || fn == "-" {
+	if inpFn == "" || inpFn == "-" {
 		inp = os.Stdin
 		defer os.Stdin.Close()
 	} else {
-		fh, err := os.Open(fn)
+		fh, err := os.Open(inpFn)
 		if err != nil {
-			Log.Crit("open input", "file", fn, "error", err)
-			os.Exit(1)
+			return err
 		}
 		defer fh.Close()
 		inp = fh
 	}
+	inp = bufio.NewReaderSize(inp, 65536)
 
-	inp = bufio.NewReader(inp)
-	if *flagDecompress {
-		r, err := sz.NewReader(inp)
-		if err != nil {
-			Log.Crit("start reading", "error", err)
-			os.Exit(2)
-		}
-		inp = r
-	}
-
-	var out io.WriteCloser
-	if *flagOut == "" || *flagOut == "-" {
+	var out io.Writer
+	if outFn == "" || outFn == "-" {
 		out = os.Stdout
+		defer os.Stdout.Close()
 	} else {
-		fh, err := os.Create(*flagOut)
+		fh, err := os.Create(outFn)
 		if err != nil {
-			Log.Crit("create output", "file", *flagOut, "error", err)
-			os.Exit(3)
+			return err
 		}
 		out = fh
-	}
-	defer func() {
-		if err := out.Close(); err != nil {
-			Log.Error("closing output", "file", *flagOut, "error", err)
-		}
-	}()
-
-	bw := bufio.NewWriter(out)
-	defer func() {
-		if err := bw.Flush(); err != nil {
-			Log.Error("flushing output", "error", err)
-		}
-	}()
-	out = struct {
-		io.Writer
-		io.Closer
-	}{bw, out}
-	if !*flagDecompress {
-		w, err := sz.NewWriter(out)
-		if err != nil {
-			Log.Crit("create compressor", "error", err)
-			os.Exit(4)
-		}
-		defer func() {
-			if err := w.Close(); err != nil {
-				Log.Error("finishing write", "error", err)
-			}
-		}()
+		defer closeLogErr(fh.Close, "close output")
 	}
 
-	n, err := io.Copy(out, inp)
+	bw := bufio.NewWriterSize(out, 65536)
+	defer closeLogErr(bw.Flush, "flush output")
+
+	if decompress {
+		return doDecompress(inp, out)
+	}
+	return doCompress(inp, out)
+}
+
+func doDecompress(inp io.Reader, out io.Writer) error {
+	r, err := sz.NewReader(inp)
+	if err != nil {
+		return err
+	}
+
+	t := time.Now()
+	n, err := io.Copy(out, r)
 	if err != nil {
 		Log.Error("copying", "error", err)
+		return err
 	}
-	Log.Info("done", "n", n)
-	if err = out.Close(); err != nil {
-		Log.Error("close", "error", err)
+	Log.Info("Finished decompression", "read", n, "time", time.Since(t))
+	return nil
+}
+
+func doCompress(inp io.Reader, out io.Writer) error {
+	w, err := sz.NewWriter(out)
+	if err != nil {
+		Log.Crit("create compressor", "error", err)
+		return err
+	}
+
+	t := time.Now()
+	n, err := io.Copy(w, inp)
+	if err != nil {
+		Log.Error("copying", "error", err)
+		return err
+	}
+	Log.Info("Finished compression", "written", n, "time", time.Since(t))
+	return w.Close()
+}
+
+func closeLogErr(C func() error, message string) func() {
+	return func() {
+		if err := C(); err != nil {
+			Log.Error(message, "error", err)
+		}
 	}
 }
