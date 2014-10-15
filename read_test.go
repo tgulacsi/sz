@@ -112,7 +112,7 @@ func TestCheckCRCs(t *testing.T) {
 		return
 	}
 	got := make([]byte, 50)
-	t.Logf("bad buf=%q", buf)
+	//t.Logf("bad buf=%q", buf)
 	if _, err := d.Read(got); err != ErrBadChecksum {
 		t.Errorf("Read: awaited %v, got %v", ErrBadChecksum, err)
 	}
@@ -122,7 +122,7 @@ func TestCheckCRCs(t *testing.T) {
 		t.Errorf("NewReader: %v", err)
 		return
 	}
-	t.Logf("good buf=%q", buf)
+	//t.Logf("good buf=%q", buf)
 	n, err := d.Read(got)
 	if err != nil {
 		t.Errorf("Read: %v", err)
@@ -134,6 +134,86 @@ func TestCheckCRCs(t *testing.T) {
 	got = got[:n]
 	if !bytes.Equal(data, got) {
 		t.Errorf("read byte mismatch: awaited\n\t%q\ngot\n\t%q", data, got)
+	}
+}
+
+func TestConcatenation(t *testing.T) {
+	Log.SetHandler(log15.StderrHandler)
+
+	var bw bytes.Buffer
+	c, err := NewWriter(&bw)
+	if err != nil {
+		t.Fatalf("NewWrite: %v", err)
+	}
+	data := make([]byte, 4096)
+	if _, err = crand.Read(data); err != nil {
+		t.Fatalf("crand.Read: %v", err)
+	}
+	if n, err := c.Write(data); err != nil {
+		t.Errorf("Write: %v", err)
+		return
+	} else if n != len(data) {
+		t.Errorf("Written %d bytes, wanted %d.", n, len(data))
+	}
+	if err = c.Close(); err != nil {
+		t.Errorf("Close: %v", err)
+		return
+	}
+
+	buf := make([]byte, len(bw.Bytes()), len(bw.Bytes())*2)
+	copy(buf, bw.Bytes())
+	d, err := NewReader(bytes.NewReader(buf))
+	if err != nil {
+		t.Errorf("NewReader1: %v", err)
+		return
+	}
+	got := make([]byte, len(data), len(data)*2)
+	if _, err = io.ReadFull(d, got); err != nil {
+		t.Logf("data=%v => buf=%v, got=%v", data[:20], buf[:20], got[:20])
+		t.Errorf("ReadFull1: %v", err)
+		return
+	}
+	if !bytes.Equal(got, data) {
+		t.Errorf("data mismatch: awaited\n\t%q\ngot\n\t%q", data, got)
+	}
+
+	buf = append(buf, bw.Bytes()...)
+
+	d, err = NewReader(bytes.NewReader(buf))
+	t.Logf("middle=%v", buf[len(buf)/2-3:len(buf)/2+8])
+	if err != nil {
+		t.Errorf("NewReader2: %v", err)
+		return
+	}
+	got = got[:cap(got)]
+	if _, err = io.ReadFull(d, got); err != nil {
+		t.Errorf("ReadFull2: %v", err)
+		return
+	}
+	if len(got) != 2*len(data) {
+		t.Errorf("data length mismatch: awaited %d, got %d", 2*len(data), len(got))
+		return
+	}
+	data = append(data, data...)
+	if len(got) != len(data) {
+		t.Fatalf("append is wrong!")
+	}
+	if !bytes.Equal(got, data) {
+		for i := 0; i < len(got); i++ {
+			if got[i] == data[i] {
+				continue
+			}
+			b := i - 10
+			if b < 0 {
+				b = 0
+			}
+			e := i + 10
+			if e > len(got) {
+				e = len(got)
+			}
+			t.Errorf("data mismatch @ %d: %v %d!=%d %v", i, data[b:i], data[i], got[i], data[i+1:e])
+			break
+		}
 	}
 }
 

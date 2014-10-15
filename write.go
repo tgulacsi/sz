@@ -19,7 +19,7 @@ import (
 	"errors"
 	"io"
 
-	"code.google.com/p/leveldb-go/leveldb/crc"
+	"github.com/tgulacsi/sz/crc32s"
 	"code.google.com/p/snappy-go/snappy"
 )
 
@@ -74,10 +74,13 @@ func (z *Writer) Write(p []byte) (int, error) {
 }
 
 func (z *Writer) writeCompressedChunk(raw []byte) error {
-	var err error
+	if len(raw) == 0 {
+		return nil
+	}
 	if len(raw) > maxComprLength {
 		return errors.New("chunk too big")
 	}
+	var err error
 	z.compr, err = snappy.Encode(z.compr[:cap(z.compr)], raw)
 	if err != nil {
 		return err
@@ -86,11 +89,11 @@ func (z *Writer) writeCompressedChunk(raw []byte) error {
 		return z.writeUncompressedChunk(raw)
 	}
 
-	return z.writeChunk(0x00, z.compr, crc.New(raw).Value())
+	return z.writeChunk(0x00, z.compr, crc32s.New(raw).Value())
 }
 
 func (z *Writer) writeUncompressedChunk(raw []byte) error {
-	return z.writeChunk(0x01, raw, crc.New(raw).Value())
+	return z.writeChunk(0x01, raw, crc32s.New(raw).Value())
 }
 
 // writeChunk writes a specified chunk, about p with u as crc.
@@ -101,16 +104,27 @@ func (z *Writer) writeUncompressedChunk(raw []byte) error {
 // 16777215, inclusive), and then the data if any. The four bytes of chunk
 // header is not counted in the data length.
 func (z *Writer) writeChunk(flag byte, p []byte, u uint32) error {
+	if len(p) == 0 {
+		return errors.New("empty input")
+	}
 	var prefix [8]byte
-	// prefix[0] = 0x00   =  compressed data
+	prefix[0] = flag
+	if len(p) > maxUncomprLength-4 {
+		return errors.New("chunk too big")
+	}
 	n := uint32(len(p)) + 4 // data length + checksum length
 	prefix[1] = byte(n)
 	prefix[2] = byte(n >> 8)
 	prefix[3] = byte(n >> 16)
-	binary.LittleEndian.PutUint32(prefix[4:8], u)
+	binary.LittleEndian.PutUint32(prefix[4:], u)
 	if _, err := z.w.Write(prefix[:]); err != nil {
 		return err
 	}
+	i := len(p)
+	if i > 20 {
+		i = 20
+	}
+	Log.Debug("writeChunk", "write-crc", prefix[4:], "length", n, "(length)", prefix[1:3], "p", p[:i])
 	if _, err := z.w.Write(p); err != nil {
 		return err
 	}

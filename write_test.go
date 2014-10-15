@@ -73,7 +73,7 @@ func TestCompression(t *testing.T) {
 	}
 	W(data)
 	got = bw.Bytes()[n:]
-	awaited = append(append([]byte("\x00\x36\x00\x00"), crc...), data...)
+	awaited = append(append([]byte("\x01\x36\x00\x00"), crc...), data...)
 	if !bytes.Equal(got, awaited) {
 		t.Errorf("uncompressible mismatch: awaited\n\t%q,\ngot\n\t%q", awaited, got)
 		return
@@ -92,6 +92,6 @@ func TestCompression(t *testing.T) {
 		t.Errorf("too small: got %d, awaited at least 131125", len(got))
 		return
 	}
-	t.Logf("got %d", len(got))
+	//t.Logf("got %d", len(got))
 	// TODO(tgulacsi): check data
 }
