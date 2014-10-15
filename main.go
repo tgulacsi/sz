@@ -21,7 +21,6 @@ import (
 	"os"
 	"time"
 
-	//"github.com/tgulacsi/sz"
 	"github.com/mreiferson/go-snappystream"
 	"gopkg.in/inconshreveable/log15.v2"
 )
