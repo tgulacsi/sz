@@ -21,39 +21,8 @@ import (
 	mrand "math/rand"
 	"testing"
 
-	"code.google.com/p/snappy-go/snappy"
 	"gopkg.in/inconshreveable/log15.v2"
 )
-
-func TestCompression(t *testing.T) {
-	Log.SetHandler(log15.StderrHandler)
-
-	var bw bytes.Buffer
-	c, err := NewWriter(&bw)
-	if err != nil {
-		t.Fatalf("NewWriter: %v", err)
-	}
-	data := make([]byte, 50)
-	if _, err = c.Write(data); err != nil {
-		t.Errorf("Write: %v", err)
-		return
-	}
-	if err = c.Flush(); err != nil {
-		t.Errorf("Flush: %v", err)
-		return
-	}
-	compressed, err := snappy.Encode(make([]byte, 6), data)
-	if err != nil {
-		t.Fatalf("Encode(%v): %v", data, err)
-	}
-	got := bw.Bytes()
-	awaited := []byte("\xff\x06\x00\x00sNaPpY" +
-		"\x00\x0a\x00\x00" + "\x8f)H\xbd" + string(compressed))
-	if !bytes.Equal(got, awaited) {
-		t.Errorf("compression mismatch: awaited\n\t%q,\ngot\n\t%q", awaited, got)
-		return
-	}
-}
 
 func TestRandom(t *testing.T) {
 	Log.SetHandler(log15.StderrHandler)

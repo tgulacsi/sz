@@ -12,9 +12,6 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-// Package sz implements "Snappy-framed" streaming Reader/Writer with Snappy.
-//
-// See https://code.google.com/p/snappy/source/browse/trunk/framing_format.txt
 package sz
 
 import (
@@ -89,7 +86,7 @@ func (z *Writer) writeCompressedChunk(raw []byte) error {
 		return z.writeUncompressedChunk(raw)
 	}
 
-	return z.writeChunk(0x00, raw, crc.New(raw).Value())
+	return z.writeChunk(0x00, z.compr, crc.New(raw).Value())
 }
 
 func (z *Writer) writeUncompressedChunk(raw []byte) error {
@@ -125,20 +122,26 @@ func maxDecodedLen(comprLen int) int {
 	return (comprLen*6 - 32*6) / 7
 }
 
-// Flish flushes any pending compressed data to the underlying writer.
+// Flush flushes any pending compressed data to the underlying writer.
+//
+// If the underlying writer has a Flush() method, then it will be called.
 func (z *Writer) Flush() error {
 	if len(z.raw) == 0 {
 		return nil
 	}
-	var err error
-	if z.compr, err = snappy.Encode(z.compr, z.raw); err != nil {
-		return err
-	}
-	if _, err = z.w.Write(z.compr); err != nil {
+	err := z.writeCompressedChunk(z.raw)
+	if err != nil {
 		return err
 	}
 	z.raw = z.raw[:0]
+	if f, ok := z.w.(flusher); ok {
+		return f.Flush()
+	}
 	return nil
+}
+
+type flusher interface {
+	Flush() error
 }
 
 // Close flushes the remaining unwritten data to the underlying io.Writer,
