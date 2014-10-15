@@ -49,7 +49,7 @@ var ErrBadChecksum = errors.New("bad checksum")
 type Reader struct {
 	r              io.Reader
 	buf, remainder []byte
-	rem []byte  // the real remainder buffer
+	rem            []byte // the real remainder buffer
 }
 
 func NewReader(r io.Reader) (*Reader, error) {
@@ -60,7 +60,7 @@ func NewReader(r io.Reader) (*Reader, error) {
 		return nil, err
 	}
 	if !bytes.Equal(buf, streamFirstChunk) {
-		Log.Debug("first chunk mismatch", "awaited", streamFirstChunk, "got", buf)
+		Log.Warn("first chunk mismatch", "awaited", streamFirstChunk, "got", buf)
 		return nil, ErrNotSnappy
 	}
 	return &Reader{r: r, buf: buf[:0], rem: make([]byte, 0, maxUncomprLength)}, nil
@@ -70,7 +70,7 @@ func (z *Reader) Read(p []byte) (int, error) {
 Beginning:
 	if len(z.remainder) > 0 {
 		n := len(z.remainder)
-		Log.Debug("Beginning", "remainder", n, "p", len(p))
+		//Log.Debug("Beginning", "remainder", n, "p", len(p))
 		if len(p) > n {
 			copy(p, z.remainder)
 			z.remainder = z.rem[:0]
@@ -93,10 +93,8 @@ Beginning:
 	var length int
 	if !(typ == 0xff || (0x02 <= typ && typ <= 0x7f)) { // Reserved unskippable chunk
 		length = int(uint32(buf[1]) | uint32(buf[2])<<8 | uint32(buf[3])<<16)
-		Log.Debug("read", "buf", buf, "length", length)
 		// length includes the crc, too!
 	}
-	Log.Debug("Read", "typ", typ, "length", length)
 
 	switch typ {
 	case 0xff: // must equal to streamFirstChunk
@@ -112,9 +110,8 @@ Beginning:
 			return 0, ErrNotSnappy
 		}
 		// skip this chunk
-		Log.Debug("firstChunk")
 		goto Beginning
-	case 0x00: // compressed data
+	case 0x00, 0x01:
 		if length < 4 {
 			return 0, fmt.Errorf("length too small: %d", length)
 		}
@@ -124,45 +121,21 @@ Beginning:
 			return 0, err
 		}
 		u := binary.LittleEndian.Uint32(buf[:4])
-		z.remainder, err = snappy.Decode(z.remainder[:cap(z.remainder)], buf[4:])
-		if err != nil {
-			Log.Error("snappy.Decode", "length", length, "buf", buf[4:])
-			return 0, err
+
+		if typ == 0x00 { // compressed data
+			z.remainder, err = snappy.Decode(z.remainder[:cap(z.remainder)], buf[4:])
+			if err != nil {
+				Log.Error("snappy.Decode", "length", length, "buf", buf[4:])
+				return 0, err
+			}
+		} else { // uncompressed data
+			z.remainder = z.remainder[:length-4]
+			copy(z.remainder, buf[4:])
 		}
 		if crc32s.New(z.remainder).Value() != u {
 			return 0, ErrBadChecksum
 		}
 		goto Beginning
-	case 0x01: // uncompressed data
-		buf = buf[:4]
-		if _, err = io.ReadFull(z.r, buf); err != nil {
-			return 0, err
-		}
-		u := binary.LittleEndian.Uint32(buf)
-
-		length -= 4
-		n := length
-		if len(p) < n {
-			n = len(p)
-		}
-		Log.Debug("Read", "read-crc", buf, "length", length, "n", n)
-		if n, err = io.ReadFull(z.r, p); err != nil {
-			return n, err
-		}
-		c := crc32s.New(p[:n])
-		//Log.Debug("uncompressed data", "length", length, "n", n, "cap(remainder)", cap(z.remainder))
-		if length > n {
-			n2, err := io.ReadFull(z.r, z.remainder[:length-n])
-			if err != nil {
-				return n, err
-			}
-			z.remainder = z.remainder[:n2]
-			c.Update(z.remainder)
-		}
-		if c.Value() != u {
-			return n, ErrBadChecksum
-		}
-		return n, nil
 	default:
 		if 0x02 <= typ && typ <= 0x7f { // Reserved unskippable chunk
 			return 0, ErrUnskippableChunk

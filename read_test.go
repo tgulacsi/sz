@@ -160,7 +160,7 @@ func TestConcatenation(t *testing.T) {
 		return
 	}
 
-	buf := make([]byte, len(bw.Bytes()), len(bw.Bytes())*2)
+	buf := make([]byte, bw.Len(), bw.Len()*2)
 	copy(buf, bw.Bytes())
 	d, err := NewReader(bytes.NewReader(buf))
 	if err != nil {
@@ -207,11 +207,11 @@ func TestConcatenation(t *testing.T) {
 			if b < 0 {
 				b = 0
 			}
-			e := i + 10
+			e := i + 20
 			if e > len(got) {
 				e = len(got)
 			}
-			t.Errorf("data mismatch @ %d: %v %d!=%d %v", i, data[b:i], data[i], got[i], data[i+1:e])
+			t.Errorf("data mismatch @ %d: %v awaited %d, got %d %v", i, data[b:i], data[i], got[i], data[i+1:e])
 			break
 		}
 	}
@@ -222,41 +222,47 @@ func TestRandom(t *testing.T) {
 
 	randBuf := make([]byte, maxUncomprLength*2)
 	var data []byte
+	var br, bw bytes.Buffer
 	for i := 0; i < 100; i++ {
-		var br, bw bytes.Buffer
+		bw.Reset()
 		c, err := NewWriter(&bw)
 		if err != nil {
 			t.Fatalf("NewWriter: %v", err)
 		}
 		k := mrand.Intn(3)
+		data = data[:0]
 		for j := 0; j < k; j++ {
 			m := mrand.Intn(cap(randBuf))
 			n, err := crand.Read(randBuf[:m])
 			if err != nil {
 				t.Fatalf("crand: %v", err)
 			}
-			data = append(data, randBuf[:n]...)
 			if n, err = c.Write(randBuf[:n]); err != nil {
 				t.Fatalf("Write: %v", err)
 			}
+			data = append(data, randBuf[:n]...)
 		}
 
 		if err = c.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
+		t.Logf("%d bytes has been written as %d compressed bytes.", len(data), bw.Len())
+
 		d, err := NewReader(bytes.NewReader(bw.Bytes()))
 		if err != nil {
 			t.Fatalf("NewReader: %v", err)
 		}
+		br.Reset()
 		if _, err = io.Copy(&br, d); err != nil {
 			t.Fatalf("Copy: %v", err)
 		}
 		if len(data) != br.Len() {
 			t.Errorf("length mismatch: awaited %d, got %d.", len(data), br.Len())
-			continue
+			return
 		}
 		if !bytes.Equal(data, br.Bytes()) {
 			t.Errorf("data mismatch: awaited %v got %v", data, br.Bytes())
+			return
 		}
 	}
 }

@@ -19,8 +19,8 @@ import (
 	"errors"
 	"io"
 
-	"github.com/tgulacsi/sz/crc32s"
 	"code.google.com/p/snappy-go/snappy"
+	"github.com/tgulacsi/sz/crc32s"
 )
 
 var streamFirstChunk = []byte{0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59}
@@ -124,7 +124,7 @@ func (z *Writer) writeChunk(flag byte, p []byte, u uint32) error {
 	if i > 20 {
 		i = 20
 	}
-	Log.Debug("writeChunk", "write-crc", prefix[4:], "length", n, "(length)", prefix[1:3], "p", p[:i])
+	//Log.Debug("writeChunk", "write-crc", prefix[4:], "length", n, "(length)", prefix[1:3], "p", p[:i])
 	if _, err := z.w.Write(p); err != nil {
 		return err
 	}
