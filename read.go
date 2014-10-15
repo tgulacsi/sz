@@ -58,9 +58,10 @@ func NewReader(r io.Reader) (*Reader, error) {
 		return nil, err
 	}
 	if !bytes.Equal(buf, streamFirstChunk) {
+		Log.Debug("first chunk mismatch", "awaited", streamFirstChunk, "got", buf)
 		return nil, ErrNotSnappy
 	}
-	return &Reader{r: r, buf: buf}, nil
+	return &Reader{r: r, buf: buf, remainder: make([]byte, 0, maxUncomprLength)}, nil
 }
 
 func (z *Reader) Read(p []byte) (int, error) {
@@ -110,7 +111,9 @@ Beginning:
 			return 0, err
 		}
 		u := binary.LittleEndian.Uint32(buf[:4])
-		if z.remainder, err = snappy.Decode(z.remainder[:cap(z.remainder)], buf[4:]); err != nil {
+		z.remainder, err = snappy.Decode(z.remainder[:cap(z.remainder)], buf[4:])
+		if err != nil {
+			Log.Error("snappy.Decode", "length", length, "buf", buf[4:])
 			return 0, err
 		}
 		if crc.New(z.remainder).Value() != u {
@@ -131,6 +134,7 @@ Beginning:
 			return n, err
 		}
 		c := crc.New(p[:n])
+		//Log.Debug("uncompressed data", "length", length, "n", n, "cap(remainder)", cap(z.remainder))
 		if length > n {
 			n2, err := io.ReadFull(z.r, z.remainder[:length-n])
 			if err != nil {

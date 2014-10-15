@@ -66,7 +66,7 @@ func TestCompression(t *testing.T) {
 		data[i] = byte(i)
 	}
 	crc = crcData(data)
-	awaited = []byte{116,22,50,22}
+	awaited = []byte{116, 22, 50, 22}
 	if !bytes.Equal(crc, awaited) {
 		t.Errorf("crc mismatch: awaited %v, got %v", crc, awaited)
 		return
