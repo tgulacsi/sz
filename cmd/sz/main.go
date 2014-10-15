@@ -21,7 +21,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/tgulacsi/sz"
+	//"github.com/tgulacsi/sz"
+	"github.com/mreiferson/go-snappystream"
 	"gopkg.in/inconshreveable/log15.v2"
 )
 
@@ -85,10 +86,7 @@ func do(inpFn, outFn string, decompress bool) error {
 }
 
 func doDecompress(inp io.Reader, out io.Writer) error {
-	r, err := sz.NewReader(inp)
-	if err != nil {
-		return err
-	}
+	r := snappystream.NewReader(inp, true)
 
 	t := time.Now()
 	n, err := io.Copy(out, r)
@@ -101,11 +99,7 @@ func doDecompress(inp io.Reader, out io.Writer) error {
 }
 
 func doCompress(inp io.Reader, out io.Writer) error {
-	w, err := sz.NewWriter(out)
-	if err != nil {
-		Log.Crit("create compressor", "error", err)
-		return err
-	}
+	w := snappystream.NewBufferedWriter(out)
 
 	t := time.Now()
 	n, err := io.Copy(w, inp)
